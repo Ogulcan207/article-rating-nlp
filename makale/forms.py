@@ -13,3 +13,10 @@ class MakaleYuklemeForm(forms.ModelForm):
         if not re.match(email_regex, email):
             raise forms.ValidationError("Geçerli bir e-posta adresi giriniz.")
         return email
+
+    def clean_pdf_dosya(self):
+        pdf = self.cleaned_data.get('pdf_dosya')
+        if pdf:
+            if not pdf.name.endswith('.pdf'):
+                raise forms.ValidationError("Yalnızca PDF dosyaları yükleyebilirsiniz.")
+        return pdf
