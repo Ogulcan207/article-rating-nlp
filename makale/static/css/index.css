@@ -79,3 +79,17 @@ p {
         width: 90%;
     }
 }
+.btn-editor {
+    background-color: #6f42c1;
+    color: white;
+    padding: 12px 25px;
+    border-radius: 5px;
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 10px;
+    transition: 0.3s;
+}
+
+.btn-editor:hover {
+    background-color: #5936a4;
+}
