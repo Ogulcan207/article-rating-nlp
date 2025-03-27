@@ -1,32 +1,42 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from .forms import MakaleYuklemeForm
 from .models import Makale, AnonymizedMakale, HakemAtama, Hakem
-from .utils import belirle_makale_alanlari, hakem_atama, anonymize_names_in_pdf
-
+from .utils import belirle_makale_alanlari_nlp, hakem_atama, anonymize_names_in_pdf, extract_keywords_with_nlp, extract_text_from_pdf
+from django.core.files.base import ContentFile
+import os
 
 def index(request):
     return render(request, 'makale/index.html')
+
 
 def makale_yukle(request):
     if request.method == 'POST':
         form = MakaleYuklemeForm(request.POST, request.FILES)
         if form.is_valid():
-            makale = form.save()
-            
-            # Makale alanlarını belirle
-            makale.alanlar.set(belirle_makale_alanlari(makale.anahtar_kelimeler))
+            makale = form.save(commit=False)
+            uploaded_file = request.FILES['pdf_dosya']
             makale.save()
 
-            # Hakem ata
-            atanan_hakem = hakem_atama(makale)
+            # PDF adlandırma
+            extension = uploaded_file.name.split('.')[-1]
+            new_filename = f"makale_{makale.id}_{makale.baslik.replace(' ', '_')}.{extension}"
+            makale.pdf_dosya.save(new_filename, uploaded_file, save=True)
 
-            return render(request, 'makale/yukleme_basarili.html', {'makale': makale, 'hakem': atanan_hakem})
+            # PDF'ten metin çıkar, NLP ile anahtar kelimeler ve alanları bul
+            text = extract_text_from_pdf(makale.pdf_dosya.name)
+            anahtar_kelimeler = ", ".join(extract_keywords_with_nlp(text))
+            makale.anahtar_kelimeler = belirle_makale_alanlari_nlp(anahtar_kelimeler)
+            alanlar = belirle_makale_alanlari_nlp(text)
+            makale.alanlar.set(alanlar)
+            makale.save()
+
+            return render(request, 'makale/yukleme_basarili.html', {'makale': makale})
     else:
         form = MakaleYuklemeForm()
-    
+
     return render(request, 'makale/makale_yukle.html', {'form': form})
 
-# 📌 1️⃣ Editör Paneli (Tüm makaleleri listeler)
+
 def editor_paneli(request):
     makaleler = Makale.objects.all().order_by('-yuklenme_tarihi')  # Son yüklenen ilk görünsün
     return render(request, 'makale/editor_paneli.html', {'makaleler': makaleler})
@@ -49,7 +59,7 @@ def anonimlestir(request, makale_id):
 
     # Girdi ve çıktı yollarını ayarla
     input_path = makale.pdf_dosya.name  # media/makaleler/...
-    output_relative_path = f"anonimleştirilmiş_makaleler/anonim_{makale_id}.pdf"
+    output_relative_path = f"anonim_makaleler/anonim_{makale.id}_{makale.baslik}.pdf"
 
     # PDF anonimleştirme işlemini yap
     anonymize_names_in_pdf(input_path, output_relative_path)

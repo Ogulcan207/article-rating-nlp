@@ -42,7 +42,7 @@ class Makale(models.Model):
     pdf_dosya = models.FileField(upload_to='makaleler/')
     yazar_email = models.EmailField()
     yuklenme_tarihi = models.DateTimeField(auto_now_add=True)
-    anahtar_kelimeler = models.TextField()  # Anahtar kelimeler buraya eklenecek!
+    anahtar_kelimeler = models.TextField(blank=True)  # Anahtar kelimeler buraya eklenecek!
     alanlar = models.ManyToManyField(IlgiAlani, blank=True)  # Otomatik belirlenecek
     durum = models.CharField(max_length=20, choices=[
         ('Beklemede', 'Beklemede'),
@@ -56,7 +56,7 @@ class Makale(models.Model):
 # 🔒 Anonimleştirilmiş Makale Modeli (Hakemlere Gönderilecek Versiyon)
 class AnonymizedMakale(models.Model):
     orijinal_makale = models.OneToOneField(Makale, on_delete=models.CASCADE)
-    anonim_makale_pdf = models.FileField(upload_to='anonimleştirilmiş_makaleler/')
+    anonim_makale_pdf = models.FileField(upload_to='anonim_makaleler/')
     islenme_tarihi = models.DateTimeField(auto_now_add=True)
     hash_degeri = models.CharField(max_length=64, unique=True, blank=True)
 

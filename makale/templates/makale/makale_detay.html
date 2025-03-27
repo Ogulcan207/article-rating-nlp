@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Makale Detayı</title>
+    {% load static %}
+    <link rel="stylesheet" type="text/css" href="{% static 'css/makale_detay.css' %}">
+</head>
+<body>
+    <div class="container">
+        <h1>📄 {{ makale.baslik }}</h1>
+
+        <p><strong>Takip No:</strong> {{ makale.takip_numarasi }}</p>
+        <p><strong>Yazar E-Posta:</strong> {{ makale.yazar_email }}</p>
+        <p><strong>Yüklenme Tarihi:</strong> {{ makale.yuklenme_tarihi }}</p>
+        <p><strong>Durum:</strong> {{ makale.durum }}</p>
+        <p><strong>Anahtar Kelimeler:</strong> {{ makale.anahtar_kelimeler }}</p>
+        <p><strong>Alanlar:</strong>
+            {% for alan in makale.alanlar.all %}
+                {{ alan }}{% if not forloop.last %}, {% endif %}
+            {% empty %}
+                Belirlenmemiş
+            {% endfor %}
+        </p>
+
+        <h3>📎 Orijinal Makale:</h3>
+        <embed src="{{ makale.pdf_dosya.url }}" width="100%" height="600px" type="application/pdf" />
+        <p><a href="{{ makale.pdf_dosya.url }}" target="_blank">📥 Yeni sekmede aç</a></p>
+
+        {% if anonim_makale %}
+            <h3>🔒 Anonimleştirilmiş Makale:</h3>
+            <iframe src="{{ anonim_makale.anonim_makale_pdf.url }}" width="100%" height="600px" frameborder="0" class="pdf-frame"></iframe>
+            <p><a href="{{ anonim_makale.anonim_makale_pdf.url }}" target="_blank">📥 Yeni sekmede aç</a></p>
+        {% endif %}
+
+        <h3>👤 Hakem:</h3>
+        {% if hakem_atama %}
+            <p>{{ hakem_atama.hakem.kullanici.username }}</p>
+            <p><strong>Atama Tarihi:</strong> {{ hakem_atama.atama_tarihi }}</p>
+        {% else %}
+            <p><em>Hakem atanmamış.</em></p>
+        {% endif %}
+
+        <h3>⚙️ İşlemler:</h3>
+        <a href="{% url 'anonimlestir' makale.id %}">🧼 Anonimleştir</a> |
+        <a href="{% url 'hakem_ata' makale.id %}">👨‍⚖️ Hakem Ata</a> |
+        Durum:
+        <a href="{% url 'makale_durum_guncelle' makale.id %}?durum=Beklemede">Beklemede</a> |
+        <a href="{% url 'makale_durum_guncelle' makale.id %}?durum=Değerlendiriliyor">Değerlendiriliyor</a> |
+        <a href="{% url 'makale_durum_guncelle' makale.id %}?durum=Tamamlandı">Tamamlandı</a>
+
+        <br><br>
+        <a href="{% url 'editor_paneli' %}">⬅️ Geri Dön</a>
+    </div>
+</body>
+</html>

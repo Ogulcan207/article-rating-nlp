@@ -11,6 +11,4 @@ urlpatterns = [
     path('editor/makale/<int:makale_id>/anonimlestir/', views.anonimlestir, name='anonimlestir'),
     path('editor/makale/<int:makale_id>/hakem-ata/', views.hakem_ata, name='hakem_ata'),
     path('editor/makale/<int:makale_id>/durum-guncelle/', views.makale_durum_guncelle, name='makale_durum_guncelle'),
-]
-
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

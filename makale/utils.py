@@ -1,28 +1,54 @@
 from .models import IlgiAlani, Hakem, HakemAtama
 import fitz, os, spacy
 from django.conf import settings
+import re
 
-# 📌 Anahtar kelimelerden makale alanlarını belirleme fonksiyonu
-def belirle_makale_alanlari(anahtar_kelimeler):
-    alanlar = []
-    keywordler_lower = anahtar_kelimeler.lower().split(", ")
+nlp = spacy.load("en_core_web_trf")  # Daha güçlü bir NLP modeli
 
-    ilgi_alanlari = {
-        'AI': ['derin öğrenme', 'makine öğrenimi', 'doğal dil işleme', 'bilgisayarla görü', 'generatif yapay zeka'],
-        'HCI': ['beyin-bilgisayar arayüzü', 'kullanıcı deneyimi', 'artırılmış gerçeklik', 'sanallık'],
-        'BIGDATA': ['veri madenciliği', 'veri görselleştirme', 'hadoop', 'spark', 'zaman serisi analizi'],
-        'SECURITY': ['şifreleme', 'güvenli yazılım', 'ağ güvenliği', 'kimlik doğrulama', 'adli bilişim'],
-        'NETWORK': ['5g', 'bulut bilişim', 'blockchain', 'p2p', 'merkeziyetsiz sistemler']
+
+def belirle_makale_alanlari_nlp(text):
+    keywords = extract_keywords_with_nlp(text)
+
+    ilgi_alani_etiketleri = {
+        'AI': ['deep learning', 'machine', 'neural', 'nlp', 'algorithm', 'recognition', 'ai', 'cnn', 'lstm', 'svm', 'classification', 'transformer', 'bert', 'model'],
+        'HCI': ['user', 'emotion', 'interface', 'stress', 'arousal', 'reaction', 'signal', 'eeg', 'experiment'],
+        'BIGDATA': ['data', 'analysis', 'dataset', 'visualization', 'streaming', 'bigdata', 'feature', 'dimensionality'],
+        'SECURITY': ['security', 'blockchain', 'encryption', 'attack', 'cyber', 'authentication'],
+        'NETWORK': ['network', 'protocol', 'communication', '5g', 'iot']
     }
 
-    for kategori, kelimeler in ilgi_alanlari.items():
-        for kelime in kelimeler:
-            if any(k in kelime for k in keywordler_lower):
-                ilgi_alani = IlgiAlani.objects.filter(kategori=kategori, isim=kelime).first()
-                if ilgi_alani and ilgi_alani not in alanlar:
-                    alanlar.append(ilgi_alani)
+    sayac = {alan: 0 for alan in ilgi_alani_etiketleri}
 
-    return alanlar
+    for alan, kelime_listesi in ilgi_alani_etiketleri.items():
+        for kelime in kelime_listesi:
+            if any(kelime in k for k in keywords):  # keyword içinde geçiyorsa
+                sayac[alan] += 1
+
+    en_yuksek = max(sayac.values())
+    if en_yuksek == 0:
+        return []
+
+    en_uygun_alanlar = [alan for alan, skor in sayac.items() if skor == en_yuksek]
+    return IlgiAlani.objects.filter(kategori__in=en_uygun_alanlar)
+
+
+
+def extract_text_from_pdf(pdf_path):
+    full_path = os.path.join(settings.MEDIA_ROOT, pdf_path)
+    doc = fitz.open(full_path)
+    text = ""
+    for page in doc:
+        text += page.get_text("text")
+    doc.close()
+    return text
+
+def extract_keywords_with_nlp(text):
+    doc = nlp(text)
+    keywords = set()
+    for token in doc:
+        if token.pos_ in ['NOUN', 'PROPN'] and not token.is_stop and len(token.text) > 2:
+            keywords.add(token.lemma_.lower())
+    return list(keywords)
 
 # 📌 Hakem atama fonksiyonu
 def hakem_atama(makale):
@@ -37,11 +63,7 @@ def hakem_atama(makale):
 nlp = spacy.load("en_core_web_trf")  # Daha güçlü bir model, yüklenmiş olmalı
 
 def anonymize_names_in_pdf(input_pdf_path, output_relative_path):
-    """
-    Belirtilen PDF dosyasındaki kişi isimlerini beyaz kutu ile kapatır ve
-    anonimleştirilmiş dosyayı belirtilen konuma kaydeder.
-    """
-
+   
     input_path = os.path.join(settings.MEDIA_ROOT, input_pdf_path)
     output_path = os.path.join(settings.MEDIA_ROOT, output_relative_path)
 

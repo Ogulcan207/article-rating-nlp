@@ -24,5 +24,12 @@
             <button type="submit">📤 Makale Yükle</button>
         </form>
     </div>
+    {% if form.errors %}
+    <ul class="form-errors">
+        {% for field, errors in form.errors.items %}
+            <li><strong>{{ field }}:</strong> {{ errors|join:", " }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
 </body>
 </html>
