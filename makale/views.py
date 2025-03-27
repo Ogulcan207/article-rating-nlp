@@ -17,17 +17,18 @@ def makale_yukle(request):
             uploaded_file = request.FILES['pdf_dosya']
             makale.save()
 
-            # PDF adlandırma
             extension = uploaded_file.name.split('.')[-1]
             new_filename = f"makale_{makale.id}_{makale.baslik.replace(' ', '_')}.{extension}"
             makale.pdf_dosya.save(new_filename, uploaded_file, save=True)
 
-            # PDF'ten metin çıkar, NLP ile anahtar kelimeler ve alanları bul
             text = extract_text_from_pdf(makale.pdf_dosya.name)
-            anahtar_kelimeler = ", ".join(extract_keywords_with_nlp(text))
-            makale.anahtar_kelimeler = belirle_makale_alanlari_nlp(anahtar_kelimeler)
+
+            keywords = extract_keywords_with_nlp(text)
+            makale.anahtar_kelimeler = ", ".join(keywords)
+
             alanlar = belirle_makale_alanlari_nlp(text)
             makale.alanlar.set(alanlar)
+
             makale.save()
 
             return render(request, 'makale/yukleme_basarili.html', {'makale': makale})
@@ -41,7 +42,6 @@ def editor_paneli(request):
     makaleler = Makale.objects.all().order_by('-yuklenme_tarihi')  # Son yüklenen ilk görünsün
     return render(request, 'makale/editor_paneli.html', {'makaleler': makaleler})
 
-# 📌 2️⃣ Makale Detay Sayfası
 def makale_detay(request, makale_id):
     makale = get_object_or_404(Makale, id=makale_id)
     anonim_makale = AnonymizedMakale.objects.filter(orijinal_makale=makale).first()
@@ -53,30 +53,35 @@ def makale_detay(request, makale_id):
         'hakem_atama': hakem_atama
     })
 
-# 📌 3️⃣ Makale Anonimleştirme
 def anonimlestir(request, makale_id):
     makale = get_object_or_404(Makale, id=makale_id)
 
-    # Girdi ve çıktı yollarını ayarla
-    input_path = makale.pdf_dosya.name  # media/makaleler/...
-    output_relative_path = f"anonim_makaleler/anonim_{makale.id}_{makale.baslik}.pdf"
+    input_path = makale.pdf_dosya.name  # Örnek: makaleler/makale_1_bla.pdf
+    output_relative_path = f"anonim_makaleler/anonim_{makale.id}_{makale.baslik.replace(' ', '_')}.pdf"
 
-    # PDF anonimleştirme işlemini yap
-    anonymize_names_in_pdf(input_path, output_relative_path)
+    encrypted_names_dict = {}
 
-    # Modeli oluştur ya da güncelle
+    # 📌 Güncellenmiş anonimleştirme fonksiyonu çağrılır
+    anonymize_names_in_pdf(input_path, output_relative_path, encrypted_names_dict)
+
+    # 📦 Anonimleştirilmiş makale modeline kaydedilir
     anonim_makale, created = AnonymizedMakale.objects.get_or_create(
         orijinal_makale=makale,
-        defaults={"anonim_makale_pdf": output_relative_path}
+        defaults={
+            "anonim_makale_pdf": output_relative_path,
+            "sifreli_veriler": encrypted_names_dict
+        }
     )
 
+    # ❗ Eğer zaten varsa güncelle
     if not created:
         anonim_makale.anonim_makale_pdf.name = output_relative_path
+        anonim_makale.sifreli_veriler = encrypted_names_dict
         anonim_makale.save()
 
     return redirect('makale_detay', makale_id=makale.id)
 
-# 📌 4️⃣ Hakem Atama İşlemi
+
 def hakem_ata(request, makale_id):
     makale = get_object_or_404(Makale, id=makale_id)
     
@@ -85,7 +90,6 @@ def hakem_ata(request, makale_id):
     
     return redirect('makale_detay', makale_id=makale.id)
 
-# 📌 5️⃣ Makale Durum Güncelleme (Editör Makale Sürecini Değiştirebilir)
 def makale_durum_guncelle(request, makale_id):
     makale = get_object_or_404(Makale, id=makale_id)
     yeni_durum = request.GET.get('durum')
