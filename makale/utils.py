@@ -1,17 +1,19 @@
 from .models import IlgiAlani, Hakem, HakemAtama
-import fitz, os, spacy
+import fitz, os, spacy, re, base64, io, cv2
 from django.conf import settings
-import re
 from collections import Counter
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
-import base64
+from PIL import Image, ImageFilter
+from io import BytesIO
+import numpy as np
 
-nlp = spacy.load("en_core_web_trf")  # Daha güçlü bir NLP modeli
+nlp = spacy.load("en_core_web_trf")
 AES_KEY = b'16byteslongkey!!'
 
 def pad(text):
-    return text + (16 - len(text) % 16) * chr(16 - len(text) % 16)
+    padding_len = 16 - (len(text.encode('utf-8')) % 16)
+    return text + chr(padding_len) * padding_len
 
 def unpad(text):
     return text[:-ord(text[-1])]
@@ -21,7 +23,7 @@ def encrypt_text_aes(plain_text):
     ct_bytes = cipher.encrypt(pad(plain_text).encode('utf-8'))
     iv = base64.b64encode(cipher.iv).decode('utf-8')
     ct = base64.b64encode(ct_bytes).decode('utf-8')
-    return f"{iv}:{ct}"  # IV'yi ayırıyoruz
+    return f"{iv}:{ct}"
 
 def decrypt_text_aes(encrypted_text):
     iv, ct = encrypted_text.split(":")
@@ -32,7 +34,6 @@ def decrypt_text_aes(encrypted_text):
 
 def belirle_makale_alanlari_nlp(text):
     keywords = extract_keywords_with_nlp(text)
-
     ilgi_alani_etiketleri = {
         'AI': ['deep learning', 'machine', 'neural', 'nlp', 'algorithm', 'recognition', 'ai', 'cnn', 'lstm', 'svm', 'transformer', 'bert', 'model'],
         'HCI': ['user', 'emotion', 'interface', 'stress', 'arousal', 'reaction', 'signal', 'eeg', 'experiment'],
@@ -40,21 +41,9 @@ def belirle_makale_alanlari_nlp(text):
         'SECURITY': ['security', 'blockchain', 'encryption', 'attack', 'cyber', 'authentication'],
         'NETWORK': ['network', 'protocol', 'communication', '5g', 'iot']
     }
-
-    sayac = {alan: 0 for alan in ilgi_alani_etiketleri}
-
-    for alan, kelime_listesi in ilgi_alani_etiketleri.items():
-        for kelime in kelime_listesi:
-            if any(kelime in k for k in keywords):
-                sayac[alan] += 1
-
+    sayac = {alan: sum(1 for k in keywords if any(tag in k for tag in kelimeler)) for alan, kelimeler in ilgi_alani_etiketleri.items()}
     en_yuksek = max(sayac.values())
-    if en_yuksek == 0:
-        return []
-
-    # 📌 SADECE en yüksek eşleşen 1 tane alanı dön
-    en_uygun_alan = max(sayac, key=sayac.get)
-    return IlgiAlani.objects.filter(kategori=en_uygun_alan)
+    return IlgiAlani.objects.filter(kategori=max(sayac, key=sayac.get)) if en_yuksek > 0 else []
 
 
 def extract_text_from_pdf(pdf_path):
@@ -78,6 +67,16 @@ def extract_keywords_with_nlp(text, max_keywords=30):
     most_common = Counter(keywords).most_common(max_keywords)
     return [word for word, freq in most_common]
 
+def pixmap_to_base64(pix):
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
+
+def blur_image(pix):
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    blurred = img.filter(ImageFilter.GaussianBlur(radius=8))
+    return blurred
 
 def hakem_atama(makale):
     uygun_hakemler = Hakem.objects.filter(ilgi_alanlari__in=makale.alanlar.all()).distinct()
@@ -88,67 +87,149 @@ def hakem_atama(makale):
         return en_uygun_hakem.kullanici.username
     return None
 
-def anonymize_names_in_pdf(input_pdf_path, output_relative_path, encrypted_names_dict):
+def blur_author_images_after_references(doc, page_number, encrypted_names_dict, makale_id, y_start=0):
+   
+    page = doc.load_page(page_number)
+    page_height = page.rect.height
+
+    zoom = 2
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat)
+
+    # RGB formatındaki veriyi doğrudan al
+    mode = "RGB" if pix.alpha == 0 else "RGBA"
+    pil_image = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
+
+    # OpenCV uyumlu hale getir
+    cv_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
+
+    if cv_img is None:
+        return encrypted_names_dict
+
+    gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    h, w = cv_img.shape[:2]
+    index = 0
+
+    for contour in contours:
+        x, y, bw, bh = cv2.boundingRect(contour)
+
+        if y < int(h * (y_start / page_height)) or bw < 50 or bh < 50:
+            continue
+        if not (0.6 < bw / bh < 1.7):
+            continue
+
+        roi = cv_img[y:y+bh, x:x+bw]
+
+        original_roi = roi.copy()
+        blurred_roi = cv2.GaussianBlur(roi, (23, 23), 30)
+
+        img_io = io.BytesIO()
+        Image.fromarray(blurred_roi).save(img_io, format="PNG")
+        img_io.seek(0)
+
+        rect = fitz.Rect(x / zoom, y / zoom, (x + bw) / zoom, (y + bh) / zoom)
+        page.insert_image(rect, stream=img_io.read(), keep_proportion=False)
+
+        # 📦 Orijinal vesikalığı kaydet
+        filename = f"{makale_id}_p{page_number}_{index}.png"
+        save_path = os.path.join(settings.MEDIA_ROOT, "original_images", filename)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        Image.fromarray(cv2.cvtColor(original_roi, cv2.COLOR_BGR2RGB)).save(save_path)
+
+        # 🔐 Metadata olarak AES şifreli kayıt
+        encrypted_names_dict[f"image_p{page_number}_{index}"] = {
+            "type": "image",
+            "page": page_number,
+            "position": [rect.tl.x, rect.tl.y],
+            "size": [rect.width, rect.height],
+            "original_image_path": encrypt_text_aes(filename),
+            "blurred": True
+        }
+
+        index += 1
+
+    return encrypted_names_dict
+
+def anonymize_names_in_pdf(input_pdf_path, output_relative_path, encrypted_names_dict, secilen_turler=None, makale_id=None):
+    if secilen_turler is None:
+        secilen_turler = ["PERSON", "ORG", "EMAIL", "GPE", "LOC", "IMAGE"]
 
     input_path = os.path.join(settings.MEDIA_ROOT, input_pdf_path)
     output_path = os.path.join(settings.MEDIA_ROOT, output_relative_path)
     doc = fitz.open(input_path)
 
-    # Başlık ve yapı tanımları
+    stop_at_reference = ["references", "kaynakça", "referanslar", "bibliography"]
     skip_sections = ["introduction", "related work", "acknowledgement", "teşekkür"]
-    stop_at_reference = ["references", "kaynakça"]
+
+    reference_page_index = -1
+    reference_y_position = None
+    reference_found = False
     in_skipped_section = False
     in_references = False
     reference_done = False
+    reference_page_processed = False
 
-    for page in doc:
+    # 📌 REFERANS başlığının konumunu tespit et
+    for page_number, page in enumerate(doc):
         blocks = page.get_text("blocks")
-        sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))  # top to bottom
+        sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))
+
+        for block in sorted_blocks:
+            text = block[4].strip().lower()
+            if not reference_found and any(text.startswith(k) for k in stop_at_reference):
+                reference_page_index = page_number
+                reference_y_position = block[1]  # y0 pozisyonu
+                reference_found = True
+                break
+        if reference_found:
+            break
+
+    for page_number, page in enumerate(doc):
+        blocks = page.get_text("blocks")
+        sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))
 
         for block in sorted_blocks:
             text = block[4].strip()
             lowered = text.lower()
 
-            # REFERANS kontrolü
-            if any(heading in lowered for heading in stop_at_reference):
+            if any(lowered.startswith(k) for k in stop_at_reference):
                 in_references = True
                 continue
 
             if in_references:
                 if re.match(r"^\[\d+\]", text):
-                    continue  # referans satırı
+                    continue
                 elif len(text.split()) > 10:
                     reference_done = True
 
-            # ATLA: referanslar veya özel bölümler
             if any(section in lowered for section in skip_sections):
                 in_skipped_section = True
                 continue
-
             if in_skipped_section and not reference_done:
                 continue
-
             if not text:
                 continue
-
-            # NLP ile kişi, kurum vb. bul
+            
+            # 🧠 NER + AES
             nlp_doc = nlp(text)
             for ent in nlp_doc.ents:
-                if ent.label_ in ["PERSON", "ORG", "EMAIL", "GPE", "LOC"]:
+                if ent.label_ in secilen_turler and ent.label_ in ["PERSON", "ORG", "EMAIL", "GPE", "LOC"]:
                     entity_text = ent.text.strip()
                     if not entity_text:
                         continue
-
                     if ent.label_ == "ORG" and not any(x in entity_text.lower() for x in ["university", "institute", "faculty", "department"]):
                         continue
 
                     encrypted = encrypt_text_aes(entity_text)
                     encrypted_names_dict[entity_text] = encrypted
-
                     for occ in page.search_for(entity_text):
                         page.draw_rect(occ, color=(1, 1, 1), fill=(1, 1, 1))
 
-            # Regex destekli gizleme
+            # 🔍 Regex destekli arama
             regex_patterns = [
                 r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
                 r"(university|institute|faculty|department) of [\w\s]+",
@@ -159,12 +240,18 @@ def anonymize_names_in_pdf(input_pdf_path, output_relative_path, encrypted_names
                     match = match.strip()
                     if match in encrypted_names_dict:
                         continue
-
                     encrypted = encrypt_text_aes(match)
                     encrypted_names_dict[match] = encrypted
-
                     for occ in page.search_for(match):
                         page.draw_rect(occ, color=(1, 1, 1), fill=(1, 1, 1))
+
+    # 🖼️ Blurlama fonksiyonu çağrısı (değişmedi)
+    if "IMAGE" in secilen_turler and reference_page_index != -1:
+        for i in range(reference_page_index, len(doc)):
+            blur_author_images_after_references(
+                doc, i, encrypted_names_dict, makale_id,
+                y_start=reference_y_position + (doc[i].rect.height / 3) if i == reference_page_index else 0
+            )
 
     doc.save(output_path)
     doc.close()

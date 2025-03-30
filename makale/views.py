@@ -46,37 +46,54 @@ def makale_detay(request, makale_id):
     makale = get_object_or_404(Makale, id=makale_id)
     anonim_makale = AnonymizedMakale.objects.filter(orijinal_makale=makale).first()
     hakem_atama = HakemAtama.objects.filter(makale=makale).first()
-    
+
+    # POST ile bilgi türü güncellenirse
+    if request.method == 'POST' and 'bilgi_turleri' in request.POST:
+        selected = request.POST.getlist('bilgi_turleri')
+        if anonim_makale:
+            anonim_makale.secilen_bilgi_turleri = selected
+            anonim_makale.save()
+
     return render(request, 'makale/makale_detay.html', {
         'makale': makale,
         'anonim_makale': anonim_makale,
         'hakem_atama': hakem_atama
     })
 
+
 def anonimlestir(request, makale_id):
     makale = get_object_or_404(Makale, id=makale_id)
 
-    input_path = makale.pdf_dosya.name  # Örnek: makaleler/makale_1_bla.pdf
+    input_path = makale.pdf_dosya.name
     output_relative_path = f"anonim_makaleler/anonim_{makale.id}_{makale.baslik.replace(' ', '_')}.pdf"
-
     encrypted_names_dict = {}
 
-    # 📌 Güncellenmiş anonimleştirme fonksiyonu çağrılır
-    anonymize_names_in_pdf(input_path, output_relative_path, encrypted_names_dict)
+    # 🔄 Editörün seçtiği bilgi türlerini al
+    secilen_turler = request.POST.getlist("bilgi_turleri")
+    if not secilen_turler:
+        secilen_turler = ["PERSON", "ORG", "EMAIL", "GPE", "LOC", "IMAGE"]  # Default
 
-    # 📦 Anonimleştirilmiş makale modeline kaydedilir
+    anonymize_names_in_pdf(
+        input_path,
+        output_relative_path,
+        encrypted_names_dict,
+        secilen_turler,
+        makale.id
+    )
+
     anonim_makale, created = AnonymizedMakale.objects.get_or_create(
         orijinal_makale=makale,
         defaults={
             "anonim_makale_pdf": output_relative_path,
-            "sifreli_veriler": encrypted_names_dict
+            "sifreli_veriler": encrypted_names_dict,
+            "secilen_bilgi_turleri": secilen_turler
         }
     )
 
-    # ❗ Eğer zaten varsa güncelle
     if not created:
         anonim_makale.anonim_makale_pdf.name = output_relative_path
         anonim_makale.sifreli_veriler = encrypted_names_dict
+        anonim_makale.secilen_bilgi_turleri = secilen_turler
         anonim_makale.save()
 
     return redirect('makale_detay', makale_id=makale.id)

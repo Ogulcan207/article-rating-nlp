@@ -55,6 +55,7 @@ class AnonymizedMakale(models.Model):
     sifreli_veriler = models.JSONField(null=True, blank=True)
     islenme_tarihi = models.DateTimeField(auto_now_add=True)
     hash_degeri = models.CharField(max_length=64, unique=True, blank=True)
+    secilen_bilgi_turleri = models.JSONField(null=True, blank=True, default=dict)  # Yeni alan
 
     def save(self, *args, **kwargs):
         if not self.hash_degeri:

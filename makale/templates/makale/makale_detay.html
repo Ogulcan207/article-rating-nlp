@@ -27,12 +27,22 @@
         <embed src="{{ makale.pdf_dosya.url }}" width="100%" height="600px" type="application/pdf" />
         <p><a href="{{ makale.pdf_dosya.url }}" target="_blank">📥 Yeni sekmede aç</a></p>
 
+        <h3>✏️ Anonimleştirilecek Bilgi Türlerini Seçin:</h3>
+        <form method="post" action="{% url 'anonimlestir' makale.id %}">
+            {% csrf_token %}
+            <label><input type="checkbox" name="bilgi_turleri" value="PERSON"> Ad-Soyad</label><br>
+            <label><input type="checkbox" name="bilgi_turleri" value="ORG"> Kurum</label><br>
+            <label><input type="checkbox" name="bilgi_turleri" value="EMAIL"> E-Posta</label><br>
+            <label><input type="checkbox" name="bilgi_turleri" value="IMAGE"> Vesikalık (Görsel)</label><br><br>
+            <button type="submit">🧼 Seçilen Bilgilere Göre Anonimleştir</button>
+        </form>
+        
         {% if anonim_makale %}
-            <h3>🔒 Anonimleştirilmiş Makale:</h3>
-            <iframe src="{{ anonim_makale.anonim_makale_pdf.url }}" width="100%" height="600px" frameborder="0" class="pdf-frame"></iframe>
-            <p><a href="{{ anonim_makale.anonim_makale_pdf.url }}" target="_blank">📥 Yeni sekmede aç</a></p>
+        <h3>🔒 Anonimleştirilmiş Makale:</h3>
+        <iframe src="{{ anonim_makale.anonim_makale_pdf.url }}" width="100%" height="600px" frameborder="0" class="pdf-frame"></iframe>
+        <p><a href="{{ anonim_makale.anonim_makale_pdf.url }}" target="_blank">📥 Yeni sekmede aç</a></p>
         {% endif %}
-
+    
         <h3>👤 Hakem:</h3>
         {% if hakem_atama %}
             <p>{{ hakem_atama.hakem.kullanici.username }}</p>
