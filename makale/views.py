@@ -1,9 +1,9 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .forms import MakaleYuklemeForm
+from .forms import MakaleYuklemeForm, MakaleForm, MakaleMesajForm
 from .models import Makale, AnonymizedMakale, HakemAtama, Hakem
 from .utils import belirle_makale_alanlari_nlp, hakem_atama, anonymize_names_in_pdf, extract_keywords_with_nlp, extract_text_from_pdf
-from django.core.files.base import ContentFile
-import os
+from django.urls import reverse
+
 
 def index(request):
     return render(request, 'makale/index.html')
@@ -116,3 +116,58 @@ def makale_durum_guncelle(request, makale_id):
         makale.save()
 
     return redirect('makale_detay', makale_id=makale.id)
+
+def makale_sorgula(request):
+    return render(request, 'makale/makale_sorgula.html')
+
+def makale_sorgu_detay(request):
+    sorgu_no = request.GET.get('sorgu_no', '')  # URL'den sorgu numarasını al
+    makale = Makale.objects.filter(takip_numarasi=sorgu_no).first()  # Takip numarasına göre makale bul
+
+    if not makale:
+        return render(request, 'makale/makale_sorgu_detay.html', {'error': 'Makale bulunamadı.'})
+
+    return render(request, 'makale/makale_sorgu_detay.html', {'makale': makale})
+
+def makale_duzenle(request, makale_id):
+    makale = get_object_or_404(Makale, id=makale_id)  # Makale bulunamazsa 404 hatası ver
+
+    if request.method == "POST":
+        form = MakaleForm(request.POST, request.FILES, instance=makale)
+        if form.is_valid():
+            form.save()
+            return redirect(f"{reverse('makale_sorgu_detay')}?sorgu_no={makale.takip_numarasi}")  # Güncelleme sonrası yönlendirme
+
+    else:
+        form = MakaleForm(instance=makale)  # Mevcut makale bilgileri formda görünsün
+
+    return render(request, 'makale/makale_duzenle.html', {'form': form, 'makale': makale})
+
+def makale_mesajlar(request, makale_id, rol):
+    makale = get_object_or_404(Makale, id=makale_id)
+    mesajlar = makale.mesajlar.order_by('tarih')  # Mesajları tarihe göre sırala
+    form = MakaleMesajForm()
+
+    if request.method == "POST":
+        form = MakaleMesajForm(request.POST)
+        if form.is_valid():
+            mesaj = form.save(commit=False)
+            mesaj.makale = makale
+
+            # Yazar mı editör mü belirle
+            if rol == "yazar":
+                mesaj.gonderen = 'Yazar'
+            elif rol == "editor":
+                mesaj.gonderen = 'Editör'  # Editör modelde nasıl tanımlıysa ona göre düzelt
+            else:
+                return redirect('makale_mesajlar', makale_id=makale.id)  # Geçersiz rol varsa yönlendir
+
+            mesaj.save()
+            return redirect('makale_mesajlar', makale_id=makale.id)
+
+    return render(request, 'makale/makale_mesajlar.html', {
+        'makale': makale,
+        'mesajlar': mesajlar,
+        'form': form,
+        'rol': rol  # HTML tarafında da rolü göstermek için
+    })

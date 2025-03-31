@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 import hashlib
 import uuid
+from django.conf import settings
 
 class CustomUser(AbstractUser):
     ROLE_CHOICES = [
@@ -99,3 +100,20 @@ class Log(models.Model):
 
     def __str__(self):
         return f"{self.tarih} - {self.kullanici.username} - {self.islem}"
+    
+class MakaleMesaj(models.Model):
+    makale = models.ForeignKey(Makale, on_delete=models.CASCADE, related_name='mesajlar')
+    gonderen = models.CharField(max_length=10, choices=[('Yazar', 'Yazar'), ('Editör', 'Editör')])
+    icerik = models.TextField()
+    tarih = models.DateTimeField(auto_now_add=True)
+
+    def kimden(self):
+        if self.gonderen == "Yazar":
+            return "Yazar"
+        elif self.gonderen == "Editör":
+            return "Editör"
+        else:
+            return "Bilinmeyen"
+
+    def __str__(self):
+        return f"{self.kimden()} - {self.tarih.strftime('%Y-%m-%d %H:%M')}"

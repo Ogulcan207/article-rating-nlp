@@ -1,6 +1,7 @@
 from django import forms
 from .models import Makale
 import re
+from .models import MakaleMesaj
 
 class MakaleYuklemeForm(forms.ModelForm):
     class Meta:
@@ -20,3 +21,18 @@ class MakaleYuklemeForm(forms.ModelForm):
             if not pdf.name.endswith('.pdf'):
                 raise forms.ValidationError("Yalnızca PDF dosyaları yükleyebilirsiniz.")
         return pdf
+    
+
+class MakaleForm(forms.ModelForm):
+    class Meta:
+        model = Makale
+        fields = ['baslik', 'pdf_dosya']
+
+
+class MakaleMesajForm(forms.ModelForm):
+    class Meta:
+        model = MakaleMesaj
+        fields = ['icerik']
+        widgets = {
+            'icerik': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Mesajınızı yazın...'})
+        }

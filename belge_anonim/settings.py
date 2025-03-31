@@ -58,7 +58,7 @@ ROOT_URLCONF = 'belge_anonim.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -82,7 +82,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'belge_anonim',
         'USER': 'root',   # MySQL kullanıcı adın (root varsayılan)
-        'PASSWORD': '123456',  # Şifren neyse onu yaz
+        'PASSWORD': '159753Ubeyd',  # Şifren neyse onu yaz
         'HOST': 'localhost',
         'PORT': '',
     }
