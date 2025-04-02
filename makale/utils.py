@@ -1,12 +1,11 @@
 from .models import IlgiAlani, Hakem, HakemAtama
-import fitz, os, spacy, re, base64, io, cv2
+import fitz, os, spacy, re, base64, io, cv2, numpy as np
 from django.conf import settings
 from collections import Counter
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from PIL import Image, ImageFilter
 from io import BytesIO
-import numpy as np
 
 nlp = spacy.load("en_core_web_trf")
 AES_KEY = b'16byteslongkey!!'
@@ -155,6 +154,12 @@ def blur_author_images_after_references(doc, page_number, encrypted_names_dict, 
     return encrypted_names_dict
 
 def anonymize_names_in_pdf(input_pdf_path, output_relative_path, encrypted_names_dict, secilen_turler=None, makale_id=None):
+    import os
+    import re
+    import fitz
+    from django.conf import settings
+    from .utils import encrypt_text_aes, blur_author_images_after_references, nlp
+
     if secilen_turler is None:
         secilen_turler = ["PERSON", "ORG", "EMAIL", "GPE", "LOC", "IMAGE"]
 
@@ -171,23 +176,22 @@ def anonymize_names_in_pdf(input_pdf_path, output_relative_path, encrypted_names
     in_skipped_section = False
     in_references = False
     reference_done = False
-    reference_page_processed = False
 
-    # 📌 REFERANS başlığının konumunu tespit et
+    # REFERANS BAŞLIĞI BUL
     for page_number, page in enumerate(doc):
         blocks = page.get_text("blocks")
         sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))
-
         for block in sorted_blocks:
             text = block[4].strip().lower()
             if not reference_found and any(text.startswith(k) for k in stop_at_reference):
                 reference_page_index = page_number
-                reference_y_position = block[1]  # y0 pozisyonu
+                reference_y_position = block[1]
                 reference_found = True
                 break
         if reference_found:
             break
 
+    # METİN ANONİMLEŞTİRME
     for page_number, page in enumerate(doc):
         blocks = page.get_text("blocks")
         sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))
@@ -213,23 +217,42 @@ def anonymize_names_in_pdf(input_pdf_path, output_relative_path, encrypted_names
                 continue
             if not text:
                 continue
-            
-            # 🧠 NER + AES
-            nlp_doc = nlp(text)
-            for ent in nlp_doc.ents:
+
+            doc_nlp = nlp(text)
+            for ent in doc_nlp.ents:
                 if ent.label_ in secilen_turler and ent.label_ in ["PERSON", "ORG", "EMAIL", "GPE", "LOC"]:
                     entity_text = ent.text.strip()
                     if not entity_text:
                         continue
+
                     if ent.label_ == "ORG" and not any(x in entity_text.lower() for x in ["university", "institute", "faculty", "department"]):
                         continue
 
                     encrypted = encrypt_text_aes(entity_text)
-                    encrypted_names_dict[entity_text] = encrypted
+
+                    # Tüm pozisyonları topla
+                    positions = []
                     for occ in page.search_for(entity_text):
+                        positions.append({
+                            "page": page_number,
+                            "x0": occ.x0,
+                            "y0": occ.y0,
+                            "x1": occ.x1,
+                            "y1": occ.y1
+                        })
+
+                        # Metni beyaza boyayarak gizle
                         page.draw_rect(occ, color=(1, 1, 1), fill=(1, 1, 1))
 
-            # 🔍 Regex destekli arama
+                    # 🔐 Şifreli veri + koordinatlar olarak kaydet
+                    if positions:
+                        encrypted_names_dict[entity_text] = {
+                            "type": "text",
+                            "encrypted": encrypted,
+                            "positions": positions
+                        }
+
+            # REGEX destekli ek tarama
             regex_patterns = [
                 r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
                 r"(university|institute|faculty|department) of [\w\s]+",
@@ -241,11 +264,22 @@ def anonymize_names_in_pdf(input_pdf_path, output_relative_path, encrypted_names
                     if match in encrypted_names_dict:
                         continue
                     encrypted = encrypt_text_aes(match)
-                    encrypted_names_dict[match] = encrypted
+                    encrypted_names_dict[match] = {
+                        "type": "text",
+                        "encrypted": encrypted,
+                        "positions": []
+                    }
                     for occ in page.search_for(match):
-                        page.draw_rect(occ, color=(1, 1, 1), fill=(1, 1, 1))
+                        page.draw_rect(occ, fill=(1, 1, 1))
+                        encrypted_names_dict[match]["positions"].append({
+                            "page": page_number,
+                            "x0": occ.x0,
+                            "y0": occ.y0,
+                            "x1": occ.x1,
+                            "y1": occ.y1
+                        })
 
-    # 🖼️ Blurlama fonksiyonu çağrısı (değişmedi)
+    # VESİKALIK BLURLAMA
     if "IMAGE" in secilen_turler and reference_page_index != -1:
         for i in range(reference_page_index, len(doc)):
             blur_author_images_after_references(
@@ -256,3 +290,76 @@ def anonymize_names_in_pdf(input_pdf_path, output_relative_path, encrypted_names
     doc.save(output_path)
     doc.close()
     return output_relative_path
+
+def decrypt_anonymized_pdf(anon_pdf_path, output_path, encrypted_data, media_root, original_images_folder):
+    doc = fitz.open(anon_pdf_path)
+    
+    for page_number in range(len(doc)):
+        page = doc[page_number]
+        
+        for key, val in encrypted_data.items():
+            if isinstance(val, dict) and val.get("type") == "image":
+                if val["page"] != page_number:
+                    continue
+
+                # Görsel koordinatları
+                x, y = val["position"]
+                width, height = val["size"]
+                rect = fitz.Rect(x, y, x + width, y + height)
+
+                original_name = decrypt_text_aes(val["original_image_path"])
+                image_path = os.path.join(media_root, original_images_folder, original_name)
+                if not os.path.exists(image_path):
+                    continue
+
+                with open(image_path, "rb") as img_file:
+                    img_bytes = img_file.read()
+
+                page.insert_image(rect, stream=img_bytes, keep_proportion=False)
+
+            elif isinstance(val, dict) and val.get("type") == "text":
+                try:
+                    decrypted_text = decrypt_text_aes(val["encrypted"])
+
+                    # 🔁 Önceki yazılan metin ve y-koordinatı takibi
+                    previous_text = None
+                    previous_y = None
+                    previous_x = None
+                    for pos in val.get("positions", []):
+                        if pos["page"] != page_number:
+                            continue
+
+                        # Pozisyonu biraz büyüt (taşmalar için)
+                        rect = fitz.Rect(pos["x0"] - 1, pos["y0"], pos["x1"] + 1, pos["y1"])
+                        y0 = round(rect.y0, 2)
+                        x0 = round(rect.x0, 2)
+                        # 🔁 Aynı metin art arda ve aynı satıra yakınsa yazma
+                        if decrypted_text == previous_text and previous_y is not None and abs(y0 - previous_y) <= 150 and abs(x0 -previous_x) <=150:
+                            continue
+
+                        # ⚠️ Yeni metni yazmak üzere önce güncelle
+                        previous_text = decrypted_text
+                        previous_y = y0
+                        previous_x = x0
+                        # Alanı beyaza boya
+                        page.draw_rect(rect, fill=(1, 1, 1), overlay=True)
+
+                        # Yazı yüksekliğini ortalamak için y1'den biraz düş
+                        y = rect.y1 - 1
+
+                        # Metni sola hizalı ekle
+                        page.insert_text(
+                            fitz.Point(rect.x0, y),
+                            decrypted_text,
+                            fontsize=9,
+                            fontname="helv",
+                            color=(0, 0, 0)
+                        )
+
+                except Exception:
+                    continue
+
+
+    doc.save(output_path)
+    doc.close()
+    return output_path

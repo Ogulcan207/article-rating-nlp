@@ -82,7 +82,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'belge_anonim',
         'USER': 'root',   # MySQL kullanıcı adın (root varsayılan)
-        'PASSWORD': '159753Ubeyd',  # Şifren neyse onu yaz
+        'PASSWORD': '123456',  # Şifren neyse onu yaz
         'HOST': 'localhost',
         'PORT': '',
     }

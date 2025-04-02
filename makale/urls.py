@@ -15,4 +15,12 @@ urlpatterns = [
     path('editor/makale/<int:makale_id>/anonimlestir/', views.anonimlestir, name='anonimlestir'),
     path('editor/makale/<int:makale_id>/hakem-ata/', views.hakem_ata, name='hakem_ata'),
     path('editor/makale/<int:makale_id>/durum-guncelle/', views.makale_durum_guncelle, name='makale_durum_guncelle'),
+    path('editor/makale/<int:makale_id>/mesajlar/', views.makale_mesajlar, {'rol': 'editor'}, name='editor_makale_mesajlar'),
+    path('hakem/', views.hakem_paneli, name='hakem_paneli'),
+    path('hakem/olustur/', views.hakem_olustur, name='hakem_olustur'),
+    path('hakem/ata/<int:makale_id>/', views.hakem_ata, name='hakem_ata'),
+    path('hakem/giris/', views.hakem_giris, name='hakem_giris'),
+    path('hakem/makale/<int:makale_id>/degerlendir/', views.degerlendirme_ekle, name='degerlendirme_ekle'),
+    path('editor/makale/<int:makale_id>/sonuc-olustur/', views.makale_sonucu_olustur, name='makale_sonucu_olustur')
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

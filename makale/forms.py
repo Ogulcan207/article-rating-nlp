@@ -1,7 +1,6 @@
 from django import forms
-from .models import Makale
+from .models import Makale, MakaleMesaj, Hakem, CustomUser, IlgiAlani, Degerlendirme
 import re
-from .models import MakaleMesaj
 
 class MakaleYuklemeForm(forms.ModelForm):
     class Meta:
@@ -36,3 +35,33 @@ class MakaleMesajForm(forms.ModelForm):
         widgets = {
             'icerik': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Mesajınızı yazın...'})
         }
+
+class HakemOlusturForm(forms.ModelForm):
+    ilgi_alanlari = forms.ModelMultipleChoiceField(
+        queryset=IlgiAlani.objects.all(),
+        widget=forms.CheckboxSelectMultiple,
+        required=True,
+        label="İlgi Alanları"
+    )
+
+    class Meta:
+        model = CustomUser
+        fields = ['username', 'email']
+        labels = {
+            'username': 'Kullanıcı Adı',
+            'email': 'E-posta',
+        }
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.role = 'hakem'
+        if commit:
+            user.save()
+            hakem = Hakem.objects.create(kullanici=user)
+            hakem.ilgi_alanlari.set(self.cleaned_data['ilgi_alanlari'])
+        return user
+
+class DegerlendirmeForm(forms.ModelForm):
+    class Meta:
+        model = Degerlendirme
+        fields = ['yorum', 'pdf_dosya']

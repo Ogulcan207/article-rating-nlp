@@ -46,12 +46,14 @@ class Makale(models.Model):
         ('Değerlendiriliyor', 'Değerlendiriliyor'),
         ('Tamamlandı', 'Tamamlandı')
     ], default='Beklemede')
+    sonuc_pdf = models.FileField(upload_to="sonuclar/", null=True, blank=True)
+
 
     def __str__(self):
         return self.baslik
 
 class AnonymizedMakale(models.Model):
-    orijinal_makale = models.OneToOneField(Makale, on_delete=models.CASCADE)
+    orijinal_makale = models.OneToOneField(Makale, on_delete=models.CASCADE, related_name='anonim_makale')
     anonim_makale_pdf = models.FileField(upload_to='anonim_makaleler/')
     sifreli_veriler = models.JSONField(null=True, blank=True)
     islenme_tarihi = models.DateTimeField(auto_now_add=True)

@@ -47,6 +47,13 @@
         {% else %}
             <p>⚠️ Bu takip numarasıyla eşleşen bir makale bulunamadı.</p>
         {% endif %}
+
+        {% if makale.durum == 'Tamamlandı' and makale.sonuc_pdf %}
+            <h3>✅ Değerlendirme Sonucu:</h3>
+            <p>Makalenizin değerlendirme sonucu aşağıdaki bağlantıdan indirilebilir:</p>
+            <p><a href="{{ makale.sonuc_pdf.url }}" target="_blank">📄 Sonuç PDF'ini Görüntüle</a></p>
+        {% endif %}
+
     </div>
 </body>
 </html>
