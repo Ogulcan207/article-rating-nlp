@@ -1,8 +1,9 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from .forms import MakaleYuklemeForm, MakaleForm, MakaleMesajForm
-from .models import Makale, AnonymizedMakale, HakemAtama, Hakem
+from .models import Makale, AnonymizedMakale, HakemAtama, Hakem, Log
 from .utils import belirle_makale_alanlari_nlp, hakem_atama, anonymize_names_in_pdf, extract_keywords_with_nlp, extract_text_from_pdf
 from django.urls import reverse
+from django.utils.timezone import now
 
 
 def index(request):
@@ -30,6 +31,13 @@ def makale_yukle(request):
             makale.alanlar.set(alanlar)
 
             makale.save()
+
+            Log.objects.create(
+                makale=makale,
+                kullanici=request.user if request.user.is_authenticated else None,
+                islem=f"Makale Yükledi: {makale.baslik}",
+                tarih=now()
+            )
 
             return render(request, 'makale/yukleme_basarili.html', {'makale': makale})
     else:
@@ -96,6 +104,13 @@ def anonimlestir(request, makale_id):
         anonim_makale.secilen_bilgi_turleri = secilen_turler
         anonim_makale.save()
 
+    Log.objects.create(
+        makale=makale,
+        kullanici=request.user if request.user.is_authenticated else None,  # Kullanıcı oturum açmışsa kaydet
+        islem=f"Makale Anonimleştirildi: {makale.baslik}",
+        tarih=now()
+    )
+
     return redirect('makale_detay', makale_id=makale.id)
 
 
@@ -115,6 +130,13 @@ def makale_durum_guncelle(request, makale_id):
         makale.durum = yeni_durum
         makale.save()
 
+    Log.objects.create(
+        makale=makale,
+        kullanici=request.user if request.user.is_authenticated else None,  # Kullanıcı oturum açmışsa kaydet
+        islem=f"Makale Durumu Güncellendi: {makale.baslik}",
+        tarih=now()
+    )
+
     return redirect('makale_detay', makale_id=makale.id)
 
 def makale_sorgula(request):
@@ -126,6 +148,13 @@ def makale_sorgu_detay(request):
 
     if not makale:
         return render(request, 'makale/makale_sorgu_detay.html', {'error': 'Makale bulunamadı.'})
+    
+    Log.objects.create(
+        makale=makale,
+        kullanici=request.user if request.user.is_authenticated else None,  # Kullanıcı oturum açmışsa kaydet
+        islem=f"Makale Sorgulandı: {makale.baslik}",
+        tarih=now()
+    )
 
     return render(request, 'makale/makale_sorgu_detay.html', {'makale': makale})
 
@@ -140,6 +169,13 @@ def makale_duzenle(request, makale_id):
 
     else:
         form = MakaleForm(instance=makale)  # Mevcut makale bilgileri formda görünsün
+
+    Log.objects.create(
+        makale=makale,
+        kullanici=request.user if request.user.is_authenticated else None,  # Kullanıcı oturum açmışsa kaydet
+        islem=f"Makale Düzenlendi: {makale.baslik}",
+        tarih=now()
+    )
 
     return render(request, 'makale/makale_duzenle.html', {'form': form, 'makale': makale})
 
@@ -163,6 +199,13 @@ def makale_mesajlar(request, makale_id, rol):
                 return redirect('makale_mesajlar', makale_id=makale.id)  # Geçersiz rol varsa yönlendir
 
             mesaj.save()  # Mesajı veritabanına kaydet
+
+            Log.objects.create(
+                makale=makale,
+                kullanici=request.user if request.user.is_authenticated else None,  # Kullanıcı oturum açmışsa kaydet
+                islem=f"{mesaj.gonderen} tarafından yeni bir mesaj gönderildi: {mesaj.icerik}",
+                tarih=now()
+            )
 
             # Doğru URL'ye yönlendir
             if rol == "yazar":
