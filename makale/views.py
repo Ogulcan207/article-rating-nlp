@@ -151,19 +151,24 @@ def makale_mesajlar(request, makale_id, rol):
     if request.method == "POST":
         form = MakaleMesajForm(request.POST)
         if form.is_valid():
-            mesaj = form.save(commit=False)
-            mesaj.makale = makale
+            mesaj = form.save(commit=False)  # Formdan mesaj objesi oluştur
+            mesaj.makale = makale  # Mesajı ilgili makaleye bağla
 
             # Yazar mı editör mü belirle
             if rol == "yazar":
                 mesaj.gonderen = 'Yazar'
             elif rol == "editor":
-                mesaj.gonderen = 'Editör'  # Editör modelde nasıl tanımlıysa ona göre düzelt
+                mesaj.gonderen = 'Editör'
             else:
                 return redirect('makale_mesajlar', makale_id=makale.id)  # Geçersiz rol varsa yönlendir
 
-            mesaj.save()
-            return redirect('makale_mesajlar', makale_id=makale.id)
+            mesaj.save()  # Mesajı veritabanına kaydet
+
+            # Doğru URL'ye yönlendir
+            if rol == "yazar":
+                return redirect('makale_mesajlar', makale_id=makale.id)
+            elif rol == "editor":
+                return redirect('editor_makale_mesajlar', makale_id=makale.id)
 
     return render(request, 'makale/makale_mesajlar.html', {
         'makale': makale,

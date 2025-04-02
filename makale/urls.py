@@ -11,6 +11,7 @@ urlpatterns = [
     path('makale-sorgula/sorgu-detay/', views.makale_sorgu_detay, name='makale_sorgu_detay'),
     path('makale-sorgula/<int:makale_id>/duzenle/', views.makale_duzenle, name='makale_duzenle'),
     path('makale/<int:makale_id>/mesajlar/', views.makale_mesajlar, {'rol': 'yazar'}, name='makale_mesajlar'),
+    path('editor/makale/<int:makale_id>/mesajlar/', views.makale_mesajlar, {'rol': 'editor'}, name='editor_makale_mesajlar'),
     path('editor/makale/<int:makale_id>/', views.makale_detay, name='makale_detay'),
     path('editor/makale/<int:makale_id>/anonimlestir/', views.anonimlestir, name='anonimlestir'),
     path('editor/makale/<int:makale_id>/hakem-ata/', views.hakem_ata, name='hakem_ata'),
